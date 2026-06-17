@@ -1,12 +1,12 @@
 /* ============================================================
-   MJI GLOBAL NAV + FULLSCREEN FIX 2026-06-17
+   MJI GLOBAL NAV + FULLSCREEN FIX 2026-06-18 SAFE
    - Every app gets a stable back button
    - Top-right fullscreen button
    - iOS/PWA fallback fullscreen mode
 ============================================================ */
 (function(){
-  if (window.__mjiGlobalNavFullscreenFix0617) return;
-  window.__mjiGlobalNavFullscreenFix0617 = true;
+  if (window.__mjiGlobalNavFullscreenFix0618Safe) return;
+  window.__mjiGlobalNavFullscreenFix0618Safe = true;
 
   function $(id){ return document.getElementById(id); }
   function screenOpen(){ const s = $('screen'); return !!(s && !s.classList.contains('hidden')); }
@@ -153,7 +153,7 @@
     }
     back.id = 'mjiGlobalBackBtn';
     back.type = 'button';
-    back.textContent = '‹';
+    if (back.textContent !== '‹') back.textContent = '‹';
     back.setAttribute('aria-label','返回');
     back.onclick = function(e){ e.preventDefault(); e.stopPropagation(); window.mjiGoBack(); };
 
@@ -169,9 +169,8 @@
     } else if (fs.parentElement !== header) {
       header.appendChild(fs);
     }
-    fs.textContent = isFull() ? '⤢' : '⛶';
-    fs.title = isFull() ? '退出全屏' : '全屏';
-    fs.setAttribute('aria-label', fs.title);
+    const __mjiFsText = isFull() ? '⤢' : '⛶'; if (fs.textContent !== __mjiFsText) fs.textContent = __mjiFsText;
+    const __mjiFsTitle = isFull() ? '退出全屏' : '全屏'; if (fs.title !== __mjiFsTitle) fs.title = __mjiFsTitle; if (fs.getAttribute('aria-label') !== __mjiFsTitle) fs.setAttribute('aria-label', __mjiFsTitle);
     fs.onclick = function(e){ e.preventDefault(); e.stopPropagation(); window.mjiToggleFullscreen(); };
   }
 
@@ -201,10 +200,214 @@
   document.addEventListener('DOMContentLoaded', function(){ syncNavButtons(); setTimeout(pushGuard, 80); });
   window.addEventListener('load', function(){ syncNavButtons(); setTimeout(pushGuard, 120); });
 
-  try{
-    const mo = new MutationObserver(function(){ syncNavButtons(); });
-    mo.observe(document.body, { childList:true, subtree:true });
-  }catch(e){}
-
+  // 不再用全局 MutationObserver：部分手机浏览器会因为按钮文字/节点同步产生死循环，导致页面无响应。
   syncNavButtons();
+})();
+
+/* ============================================================
+   MJI FINAL HOTFIX 2026-06-18 SAFE
+   - Desktop visible fullscreen button
+   - Force Chat -> Me profile/settings click to work after cache merges
+   - No dependency on older inline onclick handlers
+============================================================ */
+(function(){
+  if (window.__mjiFinalHotfix0618Safe) return;
+  window.__mjiFinalHotfix0618Safe = true;
+
+  function byId(id){ return document.getElementById(id); }
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>\"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[s])); }
+  function attr(v){ return esc(v).replace(/'/g, '&#39;'); }
+  function setAppTitle(t){ const el = byId('appTitle'); if (el) el.textContent = t || 'Chat'; }
+  function appContent(){ return byId('wechatView') || byId('appContent'); }
+  function openScreen(){ const s=byId('screen'); if(s) s.classList.remove('hidden'); }
+  function setActiveMe(){
+    document.querySelectorAll('.wechat-bottom-nav button').forEach(b=>b.classList.remove('active'));
+    const me=byId('nav_me'); if(me) me.classList.add('active');
+  }
+  function profile(){
+    return {
+      name: localStorage.getItem('MJI_MY_NAME') || localStorage.getItem('MJI_PROFILE_NAME') || '我',
+      age: localStorage.getItem('MJI_MY_AGE') || '',
+      birthday: localStorage.getItem('MJI_MY_BIRTHDAY') || '',
+      gender: localStorage.getItem('MJI_MY_GENDER') || '',
+      identity: localStorage.getItem('MJI_MY_IDENTITY') || '',
+      profile: localStorage.getItem('MJI_MY_PROFILE') || '',
+      avatar: localStorage.getItem('MJI_MY_AVATAR') || localStorage.getItem('MJI_MY_AVATAR_DATA') || ''
+    };
+  }
+  function avatarHtml(src){
+    return src ? '<img src="'+attr(src)+'" alt="头像">' : '<div class="mji-me-avatar-fallback">我</div>';
+  }
+  function fileToDataUrl(file){
+    return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(file); });
+  }
+  function ensureFinalCss(){
+    if (byId('mjiFinalHotfixCss0618')) return;
+    const st=document.createElement('style');
+    st.id='mjiFinalHotfixCss0618';
+    st.textContent = `
+      #mjiDesktopFullscreenBtn{position:fixed;right:14px;top:calc(env(safe-area-inset-top,0px) + 74px);z-index:99999;width:42px;height:42px;border:0;border-radius:15px;background:rgba(245,242,236,.58);color:#677082;font-weight:900;font-size:18px;box-shadow:0 8px 22px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.68);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;}
+      #mjiDesktopFullscreenBtn:active,#mjiGlobalBackBtn:active,#mjiFullscreenBtn:active{transform:scale(.96);}
+      .screen:not(.hidden) ~ #mjiDesktopFullscreenBtn{display:none!important;}
+      .mji-me-final,.mji-me-final *{box-sizing:border-box;pointer-events:auto!important;}
+      .mji-me-final{padding:18px 14px 96px;min-height:100%;background:var(--app-bg,#f3f1ec);}
+      .mji-me-card-final{width:100%;border:0;background:rgba(255,255,255,.78);border-radius:22px;border:1px solid rgba(255,255,255,.6);box-shadow:0 8px 24px rgba(0,0,0,.045);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:#141821;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+      .mji-me-profile-final{display:flex;align-items:center;gap:14px;padding:16px;margin:0 0 14px;}
+      .mji-me-avatar-final{width:62px;height:62px;border-radius:20px;overflow:hidden;background:#e8e6e0;flex:0 0 62px;}
+      .mji-me-avatar-final img{width:100%;height:100%;object-fit:cover;display:block;}
+      .mji-me-avatar-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#6b7280;}
+      .mji-me-name-final{font-size:20px;font-weight:900;line-height:1.2;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .mji-me-arrow-final{font-size:24px;color:#9ca3af;}
+      .mji-me-setting-final{display:flex;align-items:center;justify-content:space-between;padding:17px 16px;}
+      .mji-me-setting-title-final{font-size:16px;font-weight:900;margin-bottom:4px;}
+      .mji-me-setting-sub-final{font-size:12px;color:#8b909a;line-height:1.45;}
+      .mji-final-subpage{padding:14px 14px 96px;background:var(--app-bg,#f3f1ec);min-height:100%;}
+      .mji-final-form{background:rgba(255,255,255,.78);border:1px solid rgba(255,255,255,.6);border-radius:22px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.045);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
+      .mji-final-form input,.mji-final-form select,.mji-final-form textarea{width:100%;border:1px solid rgba(0,0,0,.07);outline:0;background:rgba(255,255,255,.75);border-radius:15px;padding:12px 13px;margin:8px 0;font-size:15px;color:#111;}
+      .mji-final-form textarea{min-height:130px;resize:vertical;line-height:1.55;}
+      .mji-final-save,.mji-final-row{width:100%;min-height:48px;border:0;border-radius:16px;background:#c8d4ee;color:#323846;font-weight:900;margin-top:10px;font-size:15px;touch-action:manipulation;}
+      .mji-final-row{background:rgba(255,255,255,.78);display:flex;align-items:center;justify-content:space-between;padding:0 15px;text-align:left;color:#141821;}
+      .mji-final-row small{display:block;color:#8b909a;font-size:12px;font-weight:500;margin-top:3px;line-height:1.4;}
+      .mji-final-danger{background:#f3d1d1;color:#8f1d1d;}
+      .mji-final-avatar-preview{width:70px;height:70px;border-radius:22px;overflow:hidden;background:#e8e6e0;margin-bottom:10px;}
+      .mji-final-avatar-preview img{width:100%;height:100%;object-fit:cover;display:block;}
+      .mji-final-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px!important;min-height:220px!important;}
+      body.mji-fake-fullscreen #mjiDesktopFullscreenBtn{display:none!important;}
+    `;
+    document.head.appendChild(st);
+  }
+
+  function renderMe(){
+    ensureFinalCss(); openScreen(); setActiveMe(); setAppTitle('Chat');
+    window.currentPage='chat'; window.currentWechatTab='me';
+    const v=appContent(); if(!v) return;
+    const m=profile();
+    v.innerHTML = `
+      <div class="mji-me-final">
+        <button type="button" class="mji-me-card-final mji-me-profile-final" data-mji-final-action="profile">
+          <div class="mji-me-avatar-final">${avatarHtml(m.avatar)}</div>
+          <div class="mji-me-name-final">${esc(m.name || '我')}</div>
+          <span class="mji-me-arrow-final">›</span>
+        </button>
+        <button type="button" class="mji-me-card-final mji-me-setting-final" data-mji-final-action="settings">
+          <div><div class="mji-me-setting-title-final">设置</div><div class="mji-me-setting-sub-final">聊天气泡设置、心声卡片设置</div></div>
+          <span class="mji-me-arrow-final">›</span>
+        </button>
+      </div>`;
+  }
+
+  function renderProfile(){
+    ensureFinalCss(); openScreen(); setAppTitle('个人资料'); window.currentPage='myProfileEditor';
+    const v=appContent(); if(!v) return; const m=profile();
+    v.innerHTML = `
+      <div class="mji-final-subpage"><div class="mji-final-form">
+        <div class="mji-final-avatar-preview">${avatarHtml(m.avatar)}</div>
+        <input type="file" id="mjiFinalAvatar" accept="image/*">
+        <input id="mjiFinalName" placeholder="姓名 / 昵称" value="${attr(m.name)}">
+        <input id="mjiFinalAge" placeholder="年龄" value="${attr(m.age)}">
+        <input id="mjiFinalBirthday" placeholder="生日，例如 09-16 / 1999-09-16" value="${attr(m.birthday)}">
+        <select id="mjiFinalGender">${['','女','男','非二元','不透露'].map(x=>`<option value="${attr(x)}" ${x===m.gender?'selected':''}>${x||'选择性别'}</option>`).join('')}</select>
+        <input id="mjiFinalIdentity" placeholder="身份 / 职业 / 自设身份" value="${attr(m.identity)}">
+        <textarea id="mjiFinalProfile" placeholder="具体信息：角色需要知道的你的设定、性格、雷点、偏好等">${esc(m.profile)}</textarea>
+        <button type="button" class="mji-final-save" data-mji-final-action="save-profile">保存个人资料</button>
+      </div></div>`;
+  }
+
+  async function saveProfile(){
+    const f=byId('mjiFinalAvatar')?.files?.[0];
+    if(f){ const data=await fileToDataUrl(f); localStorage.setItem('MJI_MY_AVATAR', data); localStorage.setItem('MJI_MY_AVATAR_DATA', data); }
+    localStorage.setItem('MJI_MY_NAME', byId('mjiFinalName')?.value.trim() || '我');
+    localStorage.setItem('MJI_PROFILE_NAME', byId('mjiFinalName')?.value.trim() || '我');
+    localStorage.setItem('MJI_MY_AGE', byId('mjiFinalAge')?.value.trim() || '');
+    localStorage.setItem('MJI_MY_BIRTHDAY', byId('mjiFinalBirthday')?.value.trim() || '');
+    localStorage.setItem('MJI_MY_GENDER', byId('mjiFinalGender')?.value || '');
+    localStorage.setItem('MJI_MY_IDENTITY', byId('mjiFinalIdentity')?.value.trim() || '');
+    localStorage.setItem('MJI_MY_PROFILE', byId('mjiFinalProfile')?.value.trim() || '');
+    alert('个人资料已保存'); renderMe();
+  }
+
+  function renderSettings(){
+    ensureFinalCss(); openScreen(); setAppTitle('设置'); window.currentPage='chatDisplaySettings';
+    const v=appContent(); if(!v) return;
+    v.innerHTML = `<div class="mji-final-subpage">
+      <button type="button" class="mji-final-row" data-mji-final-action="bubble"><span><b>聊天气泡设置</b><small>修改聊天背景、气泡颜色、圆角、字体等 CSS</small></span><span>›</span></button>
+      <button type="button" class="mji-final-row" data-mji-final-action="thoughts"><span><b>心声卡片设置</b><small>修改点击角色头像后弹出的心声卡片模板</small></span><span>›</span></button>
+    </div>`;
+  }
+  function renderBubble(){
+    ensureFinalCss(); setAppTitle('聊天气泡设置'); window.currentPage='chatBubbleSettings';
+    const v=appContent(); if(!v) return; const css=localStorage.getItem('MJI_CHAT_CUSTOM_CSS')||'';
+    v.innerHTML=`<div class="mji-final-subpage"><div class="mji-final-form">
+      <input type="file" id="mjiFinalCssFile" accept=".css,text/css,text/plain">
+      <textarea id="mjiFinalCssText" class="mji-final-code" placeholder="粘贴 Chat CSS">${esc(css)}</textarea>
+      <button type="button" class="mji-final-save" data-mji-final-action="save-bubble">保存并应用</button>
+      <button type="button" class="mji-final-save mji-final-danger" data-mji-final-action="clear-bubble">恢复默认</button>
+    </div></div>`;
+    const file=byId('mjiFinalCssFile'); if(file) file.onchange=async()=>{ const f=file.files?.[0]; if(f) byId('mjiFinalCssText').value=await f.text(); };
+  }
+  function renderThoughts(){
+    ensureFinalCss(); setAppTitle('心声卡片设置'); window.currentPage='thoughtsCardSettings';
+    const v=appContent(); if(!v) return; const tpl=localStorage.getItem('MJI_THOUGHTS_CARD_TEMPLATE')||''; const css=localStorage.getItem('MJI_THOUGHTS_CARD_CSS')||'';
+    v.innerHTML=`<div class="mji-final-subpage"><div class="mji-final-form">
+      <input type="file" id="mjiFinalThoughtsFile" accept=".html,.css,text/html,text/css,text/plain">
+      <textarea id="mjiFinalThoughtsTpl" class="mji-final-code" placeholder="粘贴心声卡片 HTML 模板">${esc(tpl)}</textarea>
+      <textarea id="mjiFinalThoughtsCss" class="mji-final-code" placeholder="单独 CSS，可空">${esc(css)}</textarea>
+      <button type="button" class="mji-final-save" data-mji-final-action="save-thoughts">保存心声卡片</button>
+      <button type="button" class="mji-final-save mji-final-danger" data-mji-final-action="clear-thoughts">恢复默认</button>
+    </div></div>`;
+    const file=byId('mjiFinalThoughtsFile'); if(file) file.onchange=async()=>{ const f=file.files?.[0]; if(!f)return; const text=await f.text(); if((f.name||'').toLowerCase().endsWith('.css')) byId('mjiFinalThoughtsCss').value=text; else byId('mjiFinalThoughtsTpl').value=text; };
+  }
+
+  async function action(a,e){
+    if(!a) return false; if(e){ e.preventDefault(); e.stopPropagation(); }
+    if(a==='profile'){ renderProfile(); return true; }
+    if(a==='settings'){ renderSettings(); return true; }
+    if(a==='save-profile'){ await saveProfile(); return true; }
+    if(a==='bubble'){ renderBubble(); return true; }
+    if(a==='thoughts'){ renderThoughts(); return true; }
+    if(a==='save-bubble'){ localStorage.setItem('MJI_CHAT_CUSTOM_CSS', byId('mjiFinalCssText')?.value||''); if(typeof window.applyChatCustomCss==='function') window.applyChatCustomCss(); alert('聊天气泡设置已保存'); return true; }
+    if(a==='clear-bubble'){ localStorage.removeItem('MJI_CHAT_CUSTOM_CSS'); if(typeof window.applyChatCustomCss==='function') window.applyChatCustomCss(); alert('已恢复默认聊天气泡'); renderBubble(); return true; }
+    if(a==='save-thoughts'){ localStorage.setItem('MJI_THOUGHTS_CARD_TEMPLATE', byId('mjiFinalThoughtsTpl')?.value||''); localStorage.setItem('MJI_THOUGHTS_CARD_CSS', byId('mjiFinalThoughtsCss')?.value||''); alert('心声卡片设置已保存'); return true; }
+    if(a==='clear-thoughts'){ localStorage.removeItem('MJI_THOUGHTS_CARD_TEMPLATE'); localStorage.removeItem('MJI_THOUGHTS_CARD_CSS'); alert('已恢复默认心声卡片'); renderThoughts(); return true; }
+    return false;
+  }
+
+  function handle(e){
+    const t=e.target;
+    const finalNode=t && t.closest ? t.closest('[data-mji-final-action]') : null;
+    if(finalNode){ action(finalNode.getAttribute('data-mji-final-action'), e); return; }
+    const me=t && t.closest ? t.closest('#nav_me') : null;
+    if(me){ e.preventDefault(); e.stopPropagation(); renderMe(); return; }
+  }
+  document.addEventListener('click', handle, true);
+  document.addEventListener('pointerup', handle, true);
+  document.addEventListener('touchend', handle, true);
+
+  const oldSwitch=window.switchWechatTab;
+  window.switchWechatTab=function(tab){ if(tab==='me') return renderMe(); return typeof oldSwitch==='function' ? oldSwitch.apply(this, arguments) : undefined; };
+  window.renderWechatMe=renderMe;
+  window.showMyProfileEditor=renderProfile;
+  window.showChatDisplaySettingsPage=renderSettings;
+  window.showChatBubbleSettingsEditor=renderBubble;
+  window.showThoughtsCardSettingsEditor=renderThoughts;
+
+  const oldOpenApp=window.openApp;
+  if(typeof oldOpenApp==='function'){
+    window.openApp=function(app, sub){
+      const r=oldOpenApp.apply(this, arguments);
+      if(app==='chat' && sub==='me') setTimeout(renderMe, 60);
+      return r;
+    };
+  }
+
+  function bindDesktopFullscreen(){
+    ensureFinalCss();
+    let btn=byId('mjiDesktopFullscreenBtn');
+    const phone=byId('desktopRoot') || document.querySelector('.phone');
+    if(!btn && phone){ btn=document.createElement('button'); btn.id='mjiDesktopFullscreenBtn'; btn.type='button'; btn.textContent='⛶'; btn.setAttribute('aria-label','全屏'); phone.appendChild(btn); }
+    if(btn){ btn.onclick=function(e){ e.preventDefault(); e.stopPropagation(); if(typeof window.mjiToggleFullscreen==='function') window.mjiToggleFullscreen(); else document.body.classList.toggle('mji-fake-fullscreen'); }; }
+  }
+  document.addEventListener('DOMContentLoaded', bindDesktopFullscreen);
+  window.addEventListener('load', bindDesktopFullscreen);
+  setTimeout(bindDesktopFullscreen, 60);
 })();
