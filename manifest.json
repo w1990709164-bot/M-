@@ -1,28 +1,305 @@
-{
-  "name": "M叽 PWA",
-  "short_name": "M叽",
-  "start_url": "./index.html?standalone=1",
-  "display": "standalone",
-  "background_color": "#6e6e73",
-  "theme_color": "#6e6e73",
-  "orientation": "portrait",
-  "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ],
-  "scope": "./",
-  "id": "./mji-pwa",
-  "display_override": [
-    "standalone",
-    "minimal-ui",
-    "browser"
-  ]
+/* M叽桌面主题：保留原排版，只换色系 / 毛玻璃 / 圆角 / 简约图标质感 */
+:root{
+    --mji-gray:#6e6e73;
+    --mji-gray-2:#77777c;
+    --mji-gray-3:#5f5f64;
+    --mji-cream:rgba(248,246,241,.82);
+    --mji-cream-soft:rgba(248,246,241,.46);
+    --mji-blue:#c4d0ec;
+    --mji-blue-2:#aebddc;
+    --mji-text:#f8f6f1;
+    --mji-ink:#54545b;
+    --mji-muted:#77777f;
+    --mji-line:rgba(255,255,255,.32);
+    --mji-shadow:rgba(38,38,42,.18);
+}
+
+body{
+    background:linear-gradient(180deg,#66666b 0%,#77777c 100%) !important;
+}
+
+.desktop-phone{
+    background:#6f6f74 !important;
+}
+
+.desktop-bg{
+    background:
+        radial-gradient(circle at 18% 10%, rgba(255,255,255,.12), transparent 24%),
+        radial-gradient(circle at 84% 82%, rgba(196,208,236,.20), transparent 30%),
+        linear-gradient(180deg,#747479 0%,#69696e 100%) !important;
+    filter:saturate(.92);
+}
+
+.desktop-bg::after{
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03) 48%, rgba(0,0,0,.10)) !important;
+}
+
+/* 保留原本顶部音乐卡位置和尺寸，只换材质 */
+.music-widget{
+    background:rgba(248,246,241,.34) !important;
+    border:1px solid var(--mji-line) !important;
+    border-radius:24px !important;
+    box-shadow:0 14px 34px var(--mji-shadow), inset 0 1px 0 rgba(255,255,255,.28) !important;
+    backdrop-filter:blur(26px) saturate(155%) !important;
+    -webkit-backdrop-filter:blur(26px) saturate(155%) !important;
+}
+
+.music-cover{
+    background:rgba(248,246,241,.68) !important;
+    color:#7d8ba6 !important;
+    border-radius:18px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.45),
+        0 8px 18px rgba(55,55,60,.12) !important;
+}
+
+.music-cover::after{
+    display:none !important;
+}
+
+.music-title{
+    color:var(--mji-ink) !important;
+}
+
+.music-artist{
+    color:var(--mji-muted) !important;
+}
+
+.music-progress{
+    background:rgba(255,255,255,.42) !important;
+}
+
+.music-progress div{
+    background:linear-gradient(90deg,var(--mji-blue),var(--mji-blue-2)) !important;
+}
+
+.music-actions button{
+    background:rgba(248,246,241,.58) !important;
+    color:#687791 !important;
+    border-radius:14px !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.35);
+}
+
+/* 原本时间 + 天气横排不动，只换颜色 */
+.desktop-time{
+    color:var(--mji-text) !important;
+    text-shadow:0 2px 18px rgba(40,40,44,.24) !important;
+}
+
+.desktop-weather{
+    color:var(--mji-text) !important;
+    background:rgba(248,246,241,.24) !important;
+    border:1px solid rgba(255,255,255,.24) !important;
+    border-radius:999px !important;
+    padding:8px 12px !important;
+    backdrop-filter:blur(18px) !important;
+    -webkit-backdrop-filter:blur(18px) !important;
+}
+
+/* 日历原位置、原结构不动 */
+.calendar-card{
+    background:rgba(248,246,241,.38) !important;
+    border:1px solid var(--mji-line) !important;
+    border-radius:24px !important;
+    box-shadow:0 14px 34px var(--mji-shadow), inset 0 1px 0 rgba(255,255,255,.26) !important;
+    backdrop-filter:blur(26px) saturate(155%) !important;
+    -webkit-backdrop-filter:blur(26px) saturate(155%) !important;
+}
+
+.calendar-title{
+    color:#f7f5f0 !important;
+    text-shadow:0 2px 12px rgba(40,40,44,.18) !important;
+}
+
+.calendar-week-head span{
+    color:rgba(248,246,241,.66) !important;
+}
+
+.calendar-days span{
+    color:rgba(248,246,241,.92) !important;
+    background:rgba(255,255,255,.10) !important;
+}
+
+.calendar-days span.today{
+    background:rgba(196,208,236,.92) !important;
+    color:#fff !important;
+}
+
+/* 分页不改尺寸和排列，只改为磨砂面板 */
+.desktop-pager{
+    background:rgba(248,246,241,.20) !important;
+    border:1px solid rgba(255,255,255,.22) !important;
+    border-radius:28px !important;
+    padding:14px 0 10px !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
+    backdrop-filter:blur(22px) saturate(145%) !important;
+    -webkit-backdrop-filter:blur(22px) saturate(145%) !important;
+}
+
+/* 图标：保留原4列排版，只换为米白半透明极简风 */
+.desktop-app{
+    text-shadow:none !important;
+}
+
+.desktop-app span,
+.desktop-dock button span{
+    background:rgba(248,246,241,.76) !important;
+    color:#626a7c !important;
+    border:1px solid rgba(255,255,255,.34) !important;
+    border-radius:20px !important;
+    box-shadow:
+        0 8px 18px rgba(55,55,60,.12),
+        inset 0 1px 0 rgba(255,255,255,.46) !important;
+    backdrop-filter:blur(16px) !important;
+    -webkit-backdrop-filter:blur(16px) !important;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC",sans-serif !important;
+    font-size:26px !important;
+    font-weight:800 !important;
+}
+
+.desktop-app em,
+.desktop-dock button em{
+    color:rgba(248,246,241,.92) !important;
+    text-shadow:0 1px 6px rgba(40,40,44,.16) !important;
+}
+
+.desktop-dots button{
+    background:rgba(248,246,241,.42) !important;
+}
+
+.desktop-dots button.active{
+    background:var(--mji-blue) !important;
+    box-shadow:0 0 0 2px rgba(255,255,255,.10);
+}
+
+/* Dock保留底部原布局，只加毛玻璃底座 */
+.desktop-dock{
+    background:rgba(248,246,241,.22) !important;
+    border:1px solid rgba(255,255,255,.24) !important;
+    border-radius:28px !important;
+    box-shadow:0 14px 34px var(--mji-shadow), inset 0 1px 0 rgba(255,255,255,.22) !important;
+    backdrop-filter:blur(24px) saturate(150%) !important;
+    -webkit-backdrop-filter:blur(24px) saturate(150%) !important;
+}
+
+.desktop-dock button{
+    text-shadow:none !important;
+}
+
+/* 应用内页也顺手统一一点，不动功能结构 */
+.screen{
+    background:rgba(248,246,241,.82) !important;
+    backdrop-filter:blur(28px) saturate(150%) !important;
+    -webkit-backdrop-filter:blur(28px) saturate(150%) !important;
+}
+
+.app-header{
+    background:rgba(248,246,241,.72) !important;
+    border-bottom:1px solid rgba(110,110,115,.12) !important;
+    color:#55565d !important;
+    backdrop-filter:blur(18px) !important;
+    -webkit-backdrop-filter:blur(18px) !important;
+}
+
+.app-header button,
+#appTitle{
+    color:#55565d !important;
+}
+
+.desktop-placeholder-icon{
+    background:rgba(196,208,236,.5) !important;
+    color:#626a7c !important;
+}
+
+.desktop-placeholder h3{
+    color:#55565d !important;
+}
+
+/* v2：按你的要求，不再给图标区额外套半透明底框，只让每个图标自己的圆角方框半透明 */
+.desktop-pager{
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    padding:0 !important;
+}
+
+.desktop-dock{
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+}
+
+.desktop-app span,
+.desktop-dock button span{
+    background:rgba(248,246,241,.58) !important;
+    border:1px solid rgba(255,255,255,.38) !important;
+    box-shadow:
+        0 8px 18px rgba(40,40,44,.12),
+        inset 0 1px 0 rgba(255,255,255,.50) !important;
+    backdrop-filter:blur(18px) saturate(150%) !important;
+    -webkit-backdrop-filter:blur(18px) saturate(150%) !important;
+}
+
+.desktop-dock button{
+    background:transparent !important;
+}
+
+/* 设置页里放备份，避免桌面再占一个图标 */
+.settings-page{
+    padding:16px;
+}
+.settings-card{
+    background:rgba(248,246,241,.60);
+    border:1px solid rgba(255,255,255,.36);
+    border-radius:22px;
+    padding:16px;
+    margin-bottom:14px;
+    box-shadow:0 12px 28px rgba(40,40,44,.12), inset 0 1px 0 rgba(255,255,255,.35);
+    backdrop-filter:blur(22px) saturate(150%);
+    -webkit-backdrop-filter:blur(22px) saturate(150%);
+}
+.settings-title{
+    font-size:16px;
+    font-weight:800;
+    color:#53535b;
+    margin-bottom:12px;
+}
+.settings-desc{
+    font-size:12px;
+    line-height:1.6;
+    color:#77777f;
+    margin-bottom:12px;
+}
+.settings-card input,
+.settings-card select,
+.settings-card textarea{
+    width:100%;
+    border:1px solid rgba(110,110,115,.18);
+    border-radius:14px;
+    background:rgba(255,255,255,.52);
+    color:#55565d;
+    padding:12px;
+    margin-bottom:10px;
+    outline:none;
+}
+.settings-card button{
+    width:100%;
+    border:none;
+    border-radius:16px;
+    background:rgba(196,208,236,.88);
+    color:#fff;
+    font-weight:800;
+    padding:12px;
+    margin-top:4px;
+}
+.file-label{
+    display:block;
+    font-size:12px;
+    color:#77777f;
+    margin:8px 0 6px;
 }

@@ -1,96 +1,22 @@
-const CACHE_NAME = 'mji-pwa-cache-20260617-nav-fullscreen';
-const CORE_ASSETS = [
-  "./",
-  "./README.txt",
-  "./README_UPLOAD.txt",
-  "./desktop-style-add.css",
-  "./desktop-style-theme.css",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./index.html",
-  "./js/app.js",
-  "./js/backup.js",
-  "./js/blindbox.js",
-  "./js/chat.js",
-  "./js/contacts.js",
-  "./js/db.js",
-  "./js/desktop.js",
-  "./js/diary.js",
-  "./js/door.js",
-  "./js/dreamhouse.js",
-  "./js/forum.js",
-  "./js/game.js",
-  "./js/groups.js",
-  "./js/hacker.js",
-  "./js/imagegen.js",
-  "./js/mailbox.js",
-  "./js/memory.js",
-  "./js/moments.js",
-  "./js/nav.js",
-  "./js/pomodoro.js",
-  "./js/radio.js",
-  "./js/reading.js",
-  "./js/schedule.js",
-  "./js/settings.js",
-  "./js/state.js",
-  "./js/storage.js",
-  "./js/utils.js",
-  "./js/weather.js",
-  "./js/worldbook.js",
-  "./manifest.json",
-  "./style.css"
-];
+M叽 PWA 最终修复包 20260618-final2
 
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(CORE_ASSETS.map(u => new Request(u, { cache: 'reload' }))).catch(() => null))
-      .then(() => self.skipWaiting())
-  );
-});
+这包是根目录结构，上传时不要再套文件夹。
 
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : null)))
-      .then(() => self.clients.claim())
-  );
-});
+修复：
+1. 桌面也能看到右上角全屏按钮。
+2. Chat → 我 → 头像/昵称、设置 强制可点击。
+3. 合并昨天“分号真实运行修复”和四项 BUG 修复。
+4. 所有 JS/CSS 加版本号，避免旧 service worker 缓存继续吃旧文件。
+5. service worker 改成缓存优先，桌面图标打开不容易白屏/连接不上。
 
-function isSameOrigin(req) {
-  try { return new URL(req.url).origin === self.location.origin; } catch(e) { return false; }
-}
+上传方式：
+删除 GitHub 仓库旧文件后，把本压缩包解压出来的所有文件和文件夹直接拖到仓库根目录。
+不要上传最外层文件夹。
 
-self.addEventListener('fetch', event => {
-  const req = event.request;
-  if (req.method !== 'GET' || !isSameOrigin(req)) return;
-  const url = new URL(req.url);
+上传后：
+1. 手机浏览器打开网址刷新。
+2. 删除旧桌面 M叽 图标。
+3. 重新添加到主屏幕。
 
-  // 页面入口：网络优先，失败再回退缓存，解决桌面图标打开“连接不上/旧缓存”
-  if (req.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
-    event.respondWith(
-      fetch(req, { cache: 'no-store' })
-        .then(resp => {
-          const copy = resp.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy)).catch(() => null);
-          return resp;
-        })
-        .catch(() => caches.match('./index.html'))
-    );
-    return;
-  }
-
-  // 静态资源：缓存优先，后台更新
-  event.respondWith(
-    caches.match(req).then(cached => {
-      const fresh = fetch(req).then(resp => {
-        if (resp && resp.status === 200) {
-          const copy = resp.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy)).catch(() => null);
-        }
-        return resp;
-      }).catch(() => cached);
-      return cached || fresh;
-    })
-  );
-});
+注意：
+如果用户所在地打不开 pages.dev 域名，那是域名访问问题，不是代码按钮问题。需要换 Netlify/Vercel/EdgeOne Pages 或绑定自己的域名。
