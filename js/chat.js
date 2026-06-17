@@ -3680,3 +3680,460 @@ async function showAiRepliesSlowly(contactId, replies) {
         return typeof oldGoHome === "function" ? oldGoHome() : undefined;
     };
 })();
+
+/* ============================================================
+   MJI PWA BUGFIX 2026-06-17
+   1) 角色语言/翻译强制生效
+   2) 私聊消息长按：引用/删除/撤回；角色撤回后可查看
+   3) 私聊内置返回键，避免桌面版 PWA 无法返回
+============================================================ */
+(function(){
+    if (window.__mjiPwaBugfix0617) return;
+    window.__mjiPwaBugfix0617 = true;
+
+    function esc(v){
+        if (typeof escapeHtml === "function") return escapeHtml(v == null ? "" : String(v));
+        return String(v == null ? "" : v).replace(/[&<>"]/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[s]));
+    }
+    function attr(v){ return esc(v).replace(/'/g, "&#39;"); }
+    function hasCjk(v){ return /[\u4e00-\u9fff]/.test(String(v || "")); }
+    function normLang(contact){
+        const raw = String(contact?.aiLang || contact?.lang || "默认 (中文)").trim();
+        if (!raw || raw.includes("默认") || raw.includes("中文") || raw.toLowerCase()==="zh" || raw.toLowerCase()==="chinese") return { raw:"默认 (中文)", target:"中文", isChinese:true, speech:"zh-CN" };
+        if (/英|english|en/i.test(raw)) return { raw, target:"英文", isChinese:false, speech:"en-US" };
+        if (/德|german|de/i.test(raw)) return { raw, target:"德语", isChinese:false, speech:"de-DE" };
+        if (/日|japanese|ja/i.test(raw)) return { raw, target:"日语", isChinese:false, speech:"ja-JP" };
+        if (/韩|korean|ko/i.test(raw)) return { raw, target:"韩语", isChinese:false, speech:"ko-KR" };
+        if (/法|french|fr/i.test(raw)) return { raw, target:"法语", isChinese:false, speech:"fr-FR" };
+        if (/俄|russian|ru/i.test(raw)) return { raw, target:"俄语", isChinese:false, speech:"ru-RU" };
+        return { raw, target:raw, isChinese:false, speech:"en-US" };
+    }
+    function langRuleFor(contact){
+        const l = normLang(contact);
+        if (l.isChinese) {
+            return `角色语言：中文。\n【台词】必须使用中文。\n不要输出【翻译】。`;
+        }
+        return `角色语言：${l.target}。\n强制要求：\n1. 【台词】只能写${l.target}，不能夹中文。\n2. 【翻译】必须另起一行写完整中文翻译。\n3. 如果你不会${l.target}，也必须先用${l.target}表达，再给中文翻译。`;
+    }
+    function buildFormatExample(contact){
+        const l = normLang(contact);
+        if (l.isChinese) {
+            return `【内心】我想先接住她的话，不要显得敷衍。\n【台词】我在，慢慢说。`;
+        }
+        if (l.target === "英文") {
+            return `【内心】我想先接住她的话，不要显得敷衍。\n【台词】I'm here. Take your time.\n【翻译】我在。慢慢说。`;
+        }
+        return `【内心】我想先接住她的话，不要显得敷衍。\n【台词】用${l.target}写给用户的内容\n【翻译】对应的中文翻译`;
+    }
+
+    window.parseAiReplyBlocks = function(raw, contactArg){
+        const contact = contactArg || window.currentContact || currentContact;
+        const l = normLang(contact);
+        const text = String(raw || "").trim();
+        if (!text) return [];
+        let blocks = text.includes("<|SPLIT|>") ? text.split("<|SPLIT|>") : (text.includes("[MSG]") ? text.split(/\[MSG\]/) : [text]);
+        return blocks.map(block => {
+            let b = String(block || "").trim();
+            if (!b) return null;
+            const inner = (/【\s*内心\s*】[：:]?\s*([\s\S]*?)(?=【\s*台词\s*】|【\s*(?:翻译|译)\s*】|$)/.exec(b) || [])[1]?.trim() || "";
+            let dialog = (/【\s*台词\s*】[：:]?\s*([\s\S]*?)(?=【\s*(?:翻译|译)\s*】|$)/.exec(b) || [])[1]?.trim() || "";
+            let trans = (/【\s*(?:翻译|译)\s*】[：:]?\s*([\s\S]+)$/ .exec(b) || [])[1]?.trim() || "";
+            if (!dialog) {
+                dialog = b
+                    .replace(/【\s*内心\s*】[：:]?[\s\S]*?(?=【\s*台词\s*】|【\s*(?:翻译|译)\s*】|$)/g, "")
+                    .replace(/【\s*台词\s*】[：:]?/g, "")
+                    .replace(/【\s*(?:翻译|译)\s*】[：:]?[\s\S]*$/g, "")
+                    .trim();
+            }
+            dialog = dialog.replace(/^\[MSG\]/, "").replace(/\*[^*]{1,80}\*/g, "").trim();
+            if (!l.isChinese) {
+                if (!trans && hasCjk(dialog)) {
+                    const idx = dialog.search(/[\u4e00-\u9fff]/);
+                    if (idx > 0) { trans = dialog.slice(idx).trim(); dialog = dialog.slice(0, idx).trim(); }
+                }
+            } else {
+                trans = "";
+            }
+            return dialog ? { content: dialog, innerThoughts: inner, translatedText: trans } : null;
+        }).filter(Boolean).slice(0,3);
+    };
+
+    async function translateByAi(text, target){
+        const apiKey = localStorage.getItem("MJI_API_KEY") || "";
+        const apiModel = localStorage.getItem("MJI_API_MODEL") || "";
+        if (!apiKey || !apiModel || !text) return "";
+        try{
+            const res = await fetch(getChatApiUrl(), {
+                method:"POST",
+                headers:{"Content-Type":"application/json", "Authorization":"Bearer " + apiKey},
+                body: JSON.stringify({
+                    model: apiModel,
+                    temperature: 0.2,
+                    max_tokens: 240,
+                    messages:[{role:"user", content:`请把下面内容翻译成${target}，只输出译文，不要解释：\n${text}`}]
+                })
+            });
+            const data = await res.json();
+            return (data.choices?.[0]?.message?.content || "").trim();
+        }catch(e){ return ""; }
+    }
+
+    async function normalizeLanguageReplies(replies, contact){
+        const l = normLang(contact);
+        if (l.isChinese) return replies.map(r => ({...r, translatedText:""}));
+        for (const r of replies) {
+            if (hasCjk(r.content)) {
+                const cn = r.translatedText || r.content;
+                const foreign = await translateByAi(cn, l.target);
+                if (foreign) {
+                    r.content = foreign;
+                    r.translatedText = cn;
+                }
+            }
+            if (!r.translatedText) {
+                const cn = await translateByAi(r.content, "简体中文");
+                if (cn) r.translatedText = cn;
+            }
+        }
+        return replies;
+    }
+
+    window.renderPrivateMessageContent = function(m){
+        if (!m) return "";
+        const id = attr(m.id || "");
+        if (m.recalled) {
+            const who = m.role === "assistant" ? "TA" : "你";
+            return `<button class="mji-recalled-msg" onclick="mjiShowRecalled('${id}')">（${who}撤回了一条消息）</button>`;
+        }
+        let html = "";
+        if (m.quoteText || m.quoteImage) {
+            html += `<div class="mji-quote-card"><b>${esc(m.quoteWho || "引用")}</b><span>${esc(m.quoteText || "[图片]")}</span></div>`;
+        }
+        if (m.imageSrc) html += `<img class="chat-media-image" src="${esc(m.imageSrc)}" alt="图片">`;
+        else if (m.stickerSrc) html += `<img class="chat-sticker-image" src="${esc(m.stickerSrc)}" alt="表情包">`;
+        else if (m.isVoice || m.voiceMsg) {
+            const dur = m.voiceDuration || Math.max(2, Math.min(18, Math.ceil(String(m.content || "").length / 6)));
+            html += `<div class="chat-voice-bubble" onclick="playMjiVoiceMessage('${attr(m.content || "")}','${attr(currentContact?.aiLang || "")}' )"><span class="voice-wave"><i></i><i></i><i></i></span><span class="voice-duration">${dur}"</span></div>`;
+        } else html += esc(m.content || "");
+        if (m.translatedText) html += `<div class="msg-translation">${esc(m.translatedText)}</div>`;
+        return html;
+    };
+
+    async function getMessageById(id){
+        return new Promise(resolve => {
+            try{
+                const tx = db.transaction("messages","readonly");
+                const req = tx.objectStore("messages").get(id);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => resolve(null);
+            }catch(e){ resolve(null); }
+        });
+    }
+    async function putMessage(m){
+        return new Promise(resolve => {
+            try{
+                const tx = db.transaction("messages","readwrite");
+                tx.objectStore("messages").put(m);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => resolve(false);
+            }catch(e){ resolve(false); }
+        });
+    }
+    async function deleteMessageById(id){
+        return new Promise(resolve => {
+            try{
+                const tx = db.transaction("messages","readwrite");
+                tx.objectStore("messages").delete(id);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = () => resolve(false);
+            }catch(e){ resolve(false); }
+        });
+    }
+
+    window.mjiShowRecalled = async function(id){
+        const m = await getMessageById(id);
+        const text = m?.recalledContent || "没有可查看的撤回内容";
+        alert(text);
+    };
+
+    function renderPrivateRow(m){
+        const timeText = typeof formatMsgTime === "function" ? formatMsgTime(m.createdAt) : "";
+        if (m.role === "user") {
+            return `<div class="chat-row user-row" data-msg-id="${attr(m.id || "")}">
+                <div class="msg-wrap user-wrap"><div class="msg user-msg">${renderPrivateMessageContent(m)}</div><div class="msg-time">${timeText}</div></div>
+                <div class="chat-avatar">${avatarHtml(localStorage.getItem("MJI_MY_AVATAR"), "👤")}</div>
+            </div>`;
+        }
+        return `<div class="chat-row ai-row" data-msg-id="${attr(m.id || "")}">
+            ${makeThoughtAvatarHtml(currentContact?.avatar, "🙂", `showThoughtsCardForMessage('${m.id || ""}', '${currentContact?.id || ""}', '')`)}
+            <div class="msg-wrap ai-wrap"><div class="msg ai-msg">${renderPrivateMessageContent(m)}</div><div class="msg-time">${timeText}</div></div>
+        </div>`;
+    }
+
+    window.loadMessages = function(contactId){
+        const tx = db.transaction("messages", "readonly");
+        const req = tx.objectStore("messages").getAll();
+        req.onsuccess = function(){
+            const box = document.getElementById("chatBox");
+            if (!box) return;
+            const list = req.result.filter(m => m.contactId === contactId).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+            box.innerHTML = list.map(renderPrivateRow).join("") || `<p class="empty">暂无消息</p>`;
+            box.scrollTop = box.scrollHeight;
+        };
+    };
+
+    window.appendPrivateUserMessage = function(m){
+        const box = document.getElementById("chatBox");
+        if (!box) return;
+        const row = renderPrivateRow({ ...m, role:"user", id:m.id || ("msg_" + (m.createdAt||Date.now()) + "_" + Math.random().toString(16).slice(2)) });
+        box.insertAdjacentHTML("beforeend", row);
+        box.scrollTop = box.scrollHeight;
+    };
+
+    window.sendMessage = function(){
+        const input = document.getElementById("messageInput");
+        const text = input?.value?.trim() || "";
+        if (!text || !currentContact) return;
+        const now = Date.now();
+        const id = "msg_" + now + "_" + Math.random().toString(16).slice(2);
+        const q = window.__mjiQuote || null;
+        const extra = { id };
+        if (q) { extra.quoteWho = q.who; extra.quoteText = q.text; extra.quoteImage = q.image || ""; }
+        const msg = { content:text, createdAt:now, role:"user", ...extra };
+        appendPrivateUserMessage(msg);
+        saveMessage(currentContact.id, "user", text, now, extra);
+        window.__mjiQuote = null;
+        input.placeholder = "输入消息";
+        input.value = "";
+    };
+
+    window.callAI = async function(userText){
+        if (!currentContact) return;
+        const apiBase = localStorage.getItem("MJI_API_BASE");
+        const apiKey = localStorage.getItem("MJI_API_KEY");
+        const apiModel = localStorage.getItem("MJI_API_MODEL");
+        if (!apiBase || !apiKey || !apiModel) { alert("请先配置API"); return; }
+        const box = document.getElementById("chatBox");
+        const thinkingId = "thinking_" + Date.now();
+        if (box) {
+            box.insertAdjacentHTML("beforeend", `<div id="${thinkingId}" class="chat-row ai-row"><div class="chat-avatar">${avatarHtml(currentContact.avatar,"🙂")}</div><div class="msg-wrap ai-wrap"><div class="msg ai-msg typing-msg">正在输入中...</div></div></div>`);
+            box.scrollTop = box.scrollHeight;
+        }
+        try{
+            const history = await getRecentMessages(currentContact.id);
+            const memory = await recallRelevantMemory(currentContact.id, userText);
+            const worldBookText = safeWorldBook(await getWorldBookInjection(userText));
+            const messages = [{role:"system", content:`${currentContact?.prompt || "你是一个AI角色"}
+
+【角色资料】
+姓名：${currentContact.name || ""}
+身份：${currentContact.identity || ""}
+生日：${currentContact.birthday || ""}
+年龄：${currentContact.age || ""}
+性格：${currentContact.personality || ""}
+简介：${currentContact.profile || ""}
+
+【长期记忆】
+${memory || "暂无长期记忆"}
+
+【世界书】
+${worldBookText || "暂无命中的世界书"}
+
+【语言规则】
+${langRuleFor(currentContact)}
+
+【输出格式】
+你可以一次回复1到3条短消息，每条之间用 <|SPLIT|> 分隔。
+每条都必须严格包含：
+【内心】中文心理活动，给用户点头像查看，不直接显示在聊天气泡里。
+【台词】真正发给用户的消息。
+${normLang(currentContact).isChinese ? "" : "【翻译】台词的中文翻译。"}
+
+示例：
+${buildFormatExample(currentContact)}
+
+不要动作描写。不要解释格式。不要超过3条。`}];
+            history.slice(-40).forEach(m => messages.push({ role:m.role === "user" ? "user" : "assistant", content:m.content || "" }));
+            const res = await fetch(getChatApiUrl(), { method:"POST", headers:{"Content-Type":"application/json", "Authorization":"Bearer " + apiKey}, body: JSON.stringify({ model:apiModel, messages, temperature: Number(localStorage.getItem("MJI_TEMPERATURE") || "0.8") }) });
+            const data = await res.json();
+            document.getElementById(thinkingId)?.remove();
+            if (!res.ok) { alert("API错误：" + (data.error?.message || res.status)); return; }
+            let replies = parseAiReplyBlocks(data.choices?.[0]?.message?.content || "", currentContact);
+            replies = await normalizeLanguageReplies(replies, currentContact);
+            await showAiRepliesSlowly(currentContact.id, replies);
+            try { maybeExtractMemory?.(); } catch(e) {}
+        } catch(e){
+            document.getElementById(thinkingId)?.remove();
+            if (box) box.insertAdjacentHTML("beforeend", `<div class="msg ai-msg">API错误：${esc(e.message)}</div>`);
+        }
+    };
+
+    window.showAiRepliesSlowly = async function(contactId, replies){
+        const box = document.getElementById("chatBox");
+        for (let i=0;i<replies.length;i++){
+            const item = typeof replies[i] === "string" ? {content:replies[i], innerThoughts:""} : replies[i];
+            const now = Date.now() + i;
+            const msgId = "msg_" + now + "_" + Math.random().toString(16).slice(2);
+            const isVoice = typeof shouldSendVoiceForContact === "function" ? shouldSendVoiceForContact(currentContact) : false;
+            const voiceDuration = Math.max(2, Math.min(18, Math.ceil(String(item.content || "").length / 6)));
+            if (currentContact && currentContact.id === contactId && currentPage === "chatDetail" && box) {
+                const typingId = "typing_" + now + "_" + i;
+                box.insertAdjacentHTML("beforeend", `<div id="${typingId}" class="chat-row ai-row"><div class="chat-avatar">${avatarHtml(currentContact.avatar,"🙂")}</div><div class="msg-wrap ai-wrap"><div class="msg ai-msg typing-msg">${isVoice ? "正在录音中..." : "正在输入中..."}</div></div></div>`);
+                box.scrollTop = box.scrollHeight;
+                await sleep(650 + Math.random()*750);
+                document.getElementById(typingId)?.remove();
+                const msgObj = { id:msgId, contactId, role:"assistant", content:item.content, innerThoughts:item.innerThoughts || "", translatedText:item.translatedText || "", isVoice, voiceMsg:isVoice, voiceDuration, createdAt:now };
+                box.insertAdjacentHTML("beforeend", renderPrivateRow(msgObj));
+                box.scrollTop = box.scrollHeight;
+            }
+            saveMessage(contactId, "assistant", item.content, now, { id:msgId, innerThoughts:item.innerThoughts || "", translatedText:item.translatedText || "", isVoice, voiceMsg:isVoice, voiceDuration });
+            try{
+                Promise.all([getRecentMessages(contactId), getContactById(contactId)]).then(([history, contact]) => {
+                    const lastUser = [...history].reverse().find(m => m.role === "user");
+                    afterAiMessageMemoryChecks(contactId, contact?.name || currentContact?.name || "角色", lastUser?.content || "", item.content);
+                    if (typeof maybeGeneratePrivateChatImage === "function") maybeGeneratePrivateChatImage(contactId, (lastUser?.content || "") + "\n" + item.content);
+                });
+            }catch(e){}
+            if (i < replies.length - 1) await sleep(450 + Math.random()*600);
+        }
+    };
+
+    window.generateNpcMessage = async function(contact, showAlert=false){
+        if (!contact) return;
+        const apiKey = localStorage.getItem("MJI_API_KEY") || "";
+        const apiModel = localStorage.getItem("MJI_API_MODEL") || "";
+        if (!apiKey || !apiModel) { if(showAlert) alert("请先配置API"); return; }
+        const memory = safeMemory(await recallRelevantMemory(contact.id, "主动消息"));
+        const history = await getRecentMessages(contact.id);
+        const chatText = history.slice(-20).map(m => `${m.role === "user" ? "用户" : "角色"}：${m.content}`).join("\n");
+        try{
+            const payload = {
+                model: apiModel,
+                messages: [
+                    { role:"system", content:`你是AI陪伴应用里的角色，要主动给用户发一条微信式私聊消息。必须包含【内心】和【台词】${normLang(contact).isChinese ? "" : "和【翻译】"}。
+${langRuleFor(contact)}
+不要解释，不要旁白，不要动作描写。` },
+                    { role:"user", content:`【角色资料】
+姓名：${contact.name||""}
+身份：${contact.identity||""}
+性格：${contact.personality||""}
+简介：${contact.profile||""}
+角色系统Prompt：${contact.prompt||""}
+
+【长期记忆】
+${memory||"暂无"}
+
+【最近聊天】
+${chatText||"暂无"}
+
+【格式示例】
+${buildFormatExample(contact)}
+
+请生成一条主动消息。` }
+                ]
+            };
+            const res = await fetch(getChatApiUrl(), {
+                method:"POST",
+                headers:{"Content-Type":"application/json", "Authorization":"Bearer " + apiKey},
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok) { if(showAlert) alert("主动消息API错误：" + (data.error?.message || res.status)); return; }
+            let parsed = parseAiReplyBlocks(data.choices?.[0]?.message?.content || "", contact);
+            parsed = await normalizeLanguageReplies(parsed, contact);
+            receiveAiMessage(contact.id, parsed.length ? parsed : []);
+        }catch(e){ if(showAlert) alert("主动消息请求失败：" + e.message); }
+    };
+
+    function closeMsgMenu(){ document.getElementById("mjiMsgMenuMask")?.remove(); }
+    window.closeMjiMsgMenu = closeMsgMenu;
+    window.mjiShowMsgMenu = async function(id, x, y){
+        closeMsgMenu();
+        const m = await getMessageById(id);
+        if (!m) return;
+        const isAi = m.role === "assistant";
+        const mask = document.createElement("div");
+        mask.id = "mjiMsgMenuMask";
+        mask.className = "mji-msg-menu-mask";
+        mask.onclick = e => { if (e.target === mask) closeMsgMenu(); };
+        const canPeek = m.recalled && m.recalledContent;
+        mask.innerHTML = `<div class="mji-msg-menu" style="left:${Math.max(12, Math.min(window.innerWidth-180, x || 100))}px;top:${Math.max(80, Math.min(window.innerHeight-260, y || 160))}px">
+            ${canPeek ? `<button onclick="mjiShowRecalled('${attr(id)}');closeMjiMsgMenu()">查看撤回内容</button>` : ""}
+            ${!m.recalled ? `<button onclick="mjiQuoteMessage('${attr(id)}')">引用</button>` : ""}
+            ${!m.recalled ? `<button onclick="mjiCopyMessage('${attr(id)}')">复制</button>` : ""}
+            ${!m.recalled && !isAi ? `<button onclick="mjiRecallUserMessage('${attr(id)}')">撤回</button>` : ""}
+            ${!m.recalled && isAi ? `<button onclick="mjiRecallAiMessage('${attr(id)}')">角色撤回</button>` : ""}
+            <button class="danger" onclick="mjiDeleteMessage('${attr(id)}')">删除</button>
+        </div>`;
+        document.body.appendChild(mask);
+    };
+    window.mjiQuoteMessage = async function(id){
+        const m = await getMessageById(id); if (!m) return;
+        const who = m.role === "user" ? "你" : (currentContact?.name || "TA");
+        const text = m.imageSrc ? "[图片]" : (m.stickerSrc ? "[表情包]" : (m.content || ""));
+        window.__mjiQuote = { who, text: text.slice(0,80), image:m.imageSrc || m.stickerSrc || "" };
+        const input = document.getElementById("messageInput");
+        if (input) { input.placeholder = `引用「${who}: ${text.slice(0,24)}」`; input.focus(); }
+        closeMsgMenu();
+    };
+    window.mjiCopyMessage = async function(id){
+        const m = await getMessageById(id); if (!m) return;
+        try { await navigator.clipboard.writeText(m.content || ""); alert("已复制"); } catch(e){ prompt("复制这段文字", m.content || ""); }
+        closeMsgMenu();
+    };
+    window.mjiDeleteMessage = async function(id){
+        if (!confirm("删除这条消息？")) return;
+        await deleteMessageById(id);
+        document.querySelector(`[data-msg-id="${CSS.escape(id)}"]`)?.remove();
+        closeMsgMenu();
+    };
+    window.mjiRecallUserMessage = async function(id){
+        const m = await getMessageById(id); if (!m) return;
+        m.recalled = true; m.recalledBy = "user"; m.recalledContent = m.recalledContent || m.content || ""; m.content = "（你撤回了一条消息）";
+        await putMessage(m); if (currentContact) loadMessages(currentContact.id); closeMsgMenu();
+    };
+    window.mjiRecallAiMessage = async function(id){
+        const m = await getMessageById(id); if (!m) return;
+        m.recalled = true; m.recalledBy = "ai"; m.recalledContent = m.recalledContent || m.content || ""; m.content = "（TA撤回了一条消息）";
+        await putMessage(m); if (currentContact) loadMessages(currentContact.id); closeMsgMenu();
+    };
+
+    function bindLongPress(){
+        if (window.__mjiLongPressBound) return; window.__mjiLongPressBound = true;
+        let timer = null, sx=0, sy=0, targetRow=null;
+        document.addEventListener("pointerdown", e => {
+            const row = e.target.closest && e.target.closest("#chatBox .chat-row[data-msg-id]");
+            if (!row || e.target.closest("button,input,textarea,a")) return;
+            targetRow = row; sx = e.clientX; sy = e.clientY;
+            timer = setTimeout(() => { if (targetRow) mjiShowMsgMenu(targetRow.dataset.msgId, sx, sy); }, 560);
+        }, true);
+        ["pointerup","pointercancel","pointermove","scroll"].forEach(ev => document.addEventListener(ev, e => {
+            if (ev === "pointermove" && (Math.abs((e.clientX||sx)-sx)+Math.abs((e.clientY||sy)-sy) < 14)) return;
+            clearTimeout(timer); timer=null; if(ev!=="pointermove") targetRow=null;
+        }, true));
+        document.addEventListener("contextmenu", e => {
+            const row = e.target.closest && e.target.closest("#chatBox .chat-row[data-msg-id]");
+            if (!row) return;
+            e.preventDefault(); mjiShowMsgMenu(row.dataset.msgId, e.clientX, e.clientY);
+        }, true);
+    }
+    bindLongPress();
+
+    const css = document.createElement("style");
+    css.id = "mjiBugfix0617Css";
+    css.textContent = `
+.chat-webview-header{grid-template-columns:48px minmax(0,1fr)96px!important;}
+.chat-webview-actions{display:flex;justify-content:flex-end;gap:6px;}
+.msg-translation{margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;line-height:1.45;color:#6d7280;white-space:pre-wrap;}
+.user-msg .msg-translation{border-top-color:rgba(47,53,67,.12);color:#667085;}
+.mji-quote-card{margin-bottom:6px;padding:6px 8px;border-left:3px solid rgba(112,123,145,.45);border-radius:8px;background:rgba(255,255,255,.28);font-size:12px;color:#747b88;display:flex;flex-direction:column;gap:2px;max-width:210px;}
+.mji-quote-card span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mji-recalled-msg{border:0;background:transparent;color:#888;font-size:13px;padding:0;text-align:left;}
+.mji-msg-menu-mask{position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.08);}
+.mji-msg-menu{position:fixed;z-index:10051;width:168px;background:rgba(255,255,255,.94);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.7);border-radius:16px;box-shadow:0 14px 35px rgba(0,0,0,.18);padding:6px;overflow:hidden;}
+.mji-msg-menu button{width:100%;height:40px;border:0;border-radius:12px;background:transparent;text-align:left;padding:0 12px;font-size:14px;color:#242833;}
+.mji-msg-menu button:active{background:rgba(0,0,0,.06);}
+.mji-msg-menu button.danger{color:#e14b4b;}
+`;
+    document.head.appendChild(css);
+})();

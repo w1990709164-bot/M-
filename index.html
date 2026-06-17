@@ -86,8 +86,9 @@
 
     <div id="screen" class="screen hidden">
         <div class="app-header">
-            <button onclick="goHome()">‹</button>
+            <button id="mjiGlobalBackBtn" type="button" onclick="mjiGoBack ? mjiGoBack() : goHome()" aria-label="返回">‹</button>
             <div id="appTitle">应用</div>
+            <button id="mjiFullscreenBtn" type="button" onclick="mjiToggleFullscreen && mjiToggleFullscreen()" aria-label="全屏">⛶</button>
         </div>
 
         <div id="appContent" class="app-content"></div>
@@ -122,11 +123,14 @@
 <script src="js/weather.js"></script>
 <script src="js/radio.js"></script>
 <script src="js/db.js"></script>
+<script src="js/nav.js"></script>
 
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('./sw.js').catch(function (err) {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).then(function(reg){
+      reg.update && reg.update();
+    }).catch(function (err) {
       console.warn('SW register failed', err);
     });
   });

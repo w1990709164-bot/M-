@@ -1,7 +1,7 @@
 {
   "name": "M叽 PWA",
   "short_name": "M叽",
-  "start_url": "./index.html",
+  "start_url": "./index.html?standalone=1",
   "display": "standalone",
   "background_color": "#6e6e73",
   "theme_color": "#6e6e73",
@@ -17,5 +17,12 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "scope": "./",
+  "id": "./mji-pwa",
+  "display_override": [
+    "standalone",
+    "minimal-ui",
+    "browser"
   ]
 }

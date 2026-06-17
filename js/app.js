@@ -479,3 +479,52 @@ function goHome() {
     currentPage = "home"
     document.getElementById("screen").classList.add("hidden")
 }
+
+/* ============================================================
+   MJI PWA BACK FIX 2026-06-17
+   - 独立桌面打开时，系统返回/浏览器返回优先走应用内返回，避免直接退出桌面
+============================================================ */
+(function(){
+    if (window.__mjiPwaBackFix0617) return;
+    window.__mjiPwaBackFix0617 = true;
+
+    function screenOpen(){
+        const s = document.getElementById("screen");
+        return s && !s.classList.contains("hidden");
+    }
+    function armBackState(){
+        try{
+            if (!history.state || !history.state.mjiGuard) {
+                history.replaceState({mjiGuard:true, home:true}, "", location.href);
+            }
+            history.pushState({mjiGuard:true, page: window.currentPage || "home"}, "", location.href);
+        }catch(e){}
+    }
+
+    const oldOpenApp = window.openApp;
+    window.openApp = function(type, tab){
+        const r = oldOpenApp.apply(this, arguments);
+        if (type) setTimeout(armBackState, 30);
+        return r;
+    };
+
+    const oldGoHome = window.goHome;
+    window.goHome = function(){
+        const r = oldGoHome.apply(this, arguments);
+        setTimeout(function(){
+            try{
+                if (screenOpen()) history.replaceState({mjiGuard:true, page: window.currentPage || "app"}, "", location.href);
+            }catch(e){}
+        }, 30);
+        return r;
+    };
+
+    window.addEventListener("popstate", function(e){
+        if (screenOpen()) {
+            try { oldGoHome.call(window); } catch(err) {}
+            setTimeout(armBackState, 20);
+        }
+    });
+
+    window.addEventListener("load", function(){ setTimeout(armBackState, 80); });
+})();

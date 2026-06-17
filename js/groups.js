@@ -1504,3 +1504,140 @@ async function showGroupRepliesSlowly(groupId, replies) {
         saveMessage(groupId, "assistant", content, createdAt, { senderId, ...(extra || {}) })
     }
 })()
+
+/* ============================================================
+   MJI GROUP BUGFIX 2026-06-17
+   - 群聊消息也支持长按菜单（复用 chat.js 菜单）
+   - 群聊角色按各自语言输出，并保存/显示翻译
+============================================================ */
+(function(){
+    if (window.__mjiGroupBugfix0617) return;
+    window.__mjiGroupBugfix0617 = true;
+
+    function esc(v){ return typeof escapeHtml === "function" ? escapeHtml(v == null ? "" : String(v)) : String(v == null ? "" : v); }
+    function attr(v){ return esc(v).replace(/'/g, "&#39;"); }
+    function normLangG(contact){
+        const raw = String(contact?.aiLang || "默认 (中文)").trim();
+        if (!raw || raw.includes("默认") || raw.includes("中文")) return {target:"中文", isChinese:true};
+        if (/英|english|en/i.test(raw)) return {target:"英文", isChinese:false};
+        if (/德|german|de/i.test(raw)) return {target:"德语", isChinese:false};
+        if (/日|japanese|ja/i.test(raw)) return {target:"日语", isChinese:false};
+        if (/韩|korean|ko/i.test(raw)) return {target:"韩语", isChinese:false};
+        if (/法|french|fr/i.test(raw)) return {target:"法语", isChinese:false};
+        if (/俄|russian|ru/i.test(raw)) return {target:"俄语", isChinese:false};
+        return {target:raw, isChinese:false};
+    }
+    function groupLangLine(c){
+        const l = normLangG(c);
+        return l.isChinese ? "语言：中文，消息用中文。" : `语言：${l.target}，消息正文必须只用${l.target}；如果需要中文翻译，在消息末尾另写 [TRANS:中文翻译]。`;
+    }
+
+    window.parseGroupAiReplies = function(raw, speakers){
+        const text = String(raw || "").trim();
+        if (!text) return [];
+        const result = [];
+        text.split(/\[SPEAKER:/).map(t=>t.trim()).filter(Boolean).forEach(block => {
+            const end = block.indexOf("]");
+            if (end < 0) return;
+            const id = block.substring(0,end).trim();
+            let content = block.substring(end+1).replace(/^[:：]/, "").trim();
+            const speaker = speakers.find(s => s.id === id);
+            if (!speaker || !content) return;
+            let translatedText = "";
+            const transMatch = content.match(/\[TRANS[:：]([\s\S]*?)\]\s*$/i);
+            if (transMatch) {
+                translatedText = transMatch[1].trim();
+                content = content.replace(transMatch[0], "").trim();
+            }
+            result.push({ senderId:speaker.id, content, translatedText });
+        });
+        if (result.length) return result.slice(0,4);
+        return speakers[0] ? [{senderId:speakers[0].id, content:text, translatedText:""}] : [];
+    };
+
+    window.renderGroupMessageContent = function(m){
+        if (m?.recalled) return `<button class="mji-recalled-msg" onclick="mjiShowRecalled('${attr(m.id || "")}')">（TA撤回了一条消息）</button>`;
+        let html = "";
+        if (m?.quoteText || m?.quoteImage) html += `<div class="mji-quote-card"><b>${esc(m.quoteWho || "引用")}</b><span>${esc(m.quoteText || "[图片]")}</span></div>`;
+        if (m?.imageSrc) html += `<img src="${esc(m.imageSrc)}" class="chat-media-image group-msg-image" alt="图片">`;
+        else if (m?.stickerSrc) html += `<img src="${esc(m.stickerSrc)}" class="chat-sticker-image" alt="表情包">`;
+        else if (m?.isVoice || m?.voiceMsg) {
+            const dur = m.voiceDuration || Math.max(2, Math.min(18, Math.ceil(String(m.content || "").length / 6)));
+            html += `<div class="chat-voice-bubble" onclick="playMjiGroupVoiceMessage('${attr(m.content || "")}','')"><span class="voice-wave"><i></i><i></i><i></i></span><span class="voice-duration">${dur}"</span></div>`;
+        } else html += esc(m?.content || "");
+        if (m?.translatedText) html += `<div class="msg-translation">${esc(m.translatedText)}</div>`;
+        return html;
+    };
+
+    window.loadGroupMessages = async function(groupId, keyword=""){
+        const box = document.getElementById("chatBox");
+        if (!box) return;
+        const messages = await getAllStoreData("messages");
+        const contacts = await getAllStoreData("contacts");
+        let list = messages.filter(m => m.contactId === groupId).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+        if (keyword) list = list.filter(m => String(m.content||"").includes(keyword));
+        box.innerHTML = list.map(m => {
+            const timeText = formatMsgTime(m.createdAt);
+            if (m.role === "user") {
+                return `<div class="chat-row user-row" data-msg-id="${attr(m.id || "")}"><div class="msg-wrap user-wrap"><div class="msg user-msg">${renderGroupMessageContent(m)}</div><div class="msg-time">${timeText}</div></div><div class="chat-avatar">${avatarHtml(localStorage.getItem("MJI_MY_AVATAR"), "👤")}</div></div>`;
+            }
+            const sender = contacts.find(c => c.id === m.senderId);
+            const display = getGroupMemberDisplayName(currentGroup, sender);
+            return `<div class="chat-row ai-row" data-msg-id="${attr(m.id || "")}"><div class="chat-avatar">${avatarHtml(sender?.avatar, "🙂")}</div><div class="msg-wrap ai-wrap"><div class="group-sender-name">${esc(display)}</div><div class="msg ai-msg">${renderGroupMessageContent(m)}</div><div class="msg-time">${timeText}</div></div></div>`;
+        }).join("") || `<p class="empty">暂无群聊消息</p>`;
+        box.scrollTop = box.scrollHeight;
+    };
+
+    window.groupAiReply = async function(guideText=""){
+        if (!currentGroup) return;
+        const apiKey = localStorage.getItem("MJI_API_KEY") || "";
+        const apiModel = localStorage.getItem("MJI_API_MODEL") || "";
+        if (!apiKey || !apiModel) { alert("请先配置API"); return; }
+        const contacts = await getAllStoreData("contacts");
+        const members = contacts.filter(c => currentGroup.memberIds.includes(c.id));
+        if (!members.length) { alert("群聊里没有成员"); return; }
+        const speakerCount = Math.min(members.length, Math.floor(Math.random()*3)+2);
+        const speakers = members.slice().sort(()=>Math.random()-0.5).slice(0,speakerCount);
+        const groupMessages = await getGroupRecentMessages(currentGroup.id);
+        const chatText = groupMessages.map(m => m.role === "user" ? "用户：" + m.content : `${getGroupMemberDisplayName(currentGroup, members.find(c=>c.id===m.senderId))}：${m.content}`).join("\n");
+        const box = document.getElementById("chatBox");
+        const thinkingId = "groupThinking_" + Date.now();
+        if (box) { box.insertAdjacentHTML("beforeend", `<div id="${thinkingId}" class="chat-row ai-row"><div class="chat-avatar">☷</div><div class="msg-wrap ai-wrap"><div class="msg ai-msg typing-msg">群友正在输入中...</div></div></div>`); box.scrollTop = box.scrollHeight; }
+        try{
+            const res = await fetch(getChatApiUrl(), { method:"POST", headers:{"Content-Type":"application/json", "Authorization":"Bearer "+apiKey}, body: JSON.stringify({ model:apiModel, messages:[{role:"system", content:`你正在生成AI群聊片段。不要解释、不要旁白、不要动作描写。必须让指定的2到4个角色依次发言。\n输出格式：\n[SPEAKER:角色ID]\n消息内容\n\n非中文角色如需翻译，在同一条消息末尾写 [TRANS:中文翻译]。`},{role:"user", content:`【群聊名称】\n${currentGroup.name}\n\n【用户引导】\n${guideText || "无"}\n\n【本轮发言角色】\n${speakers.map(s => `角色ID：${s.id}\n姓名：${getGroupMemberDisplayName(currentGroup,s)}\n${groupLangLine(s)}\n身份：${s.identity||""}\n性格：${s.personality||""}\n简介：${s.profile||""}\n角色设定：${s.prompt||""}`).join("\n\n")}\n\n【最近群聊】\n${chatText || "暂无"}\n\n请生成这一轮群聊。`} ] }) });
+            const data = await res.json();
+            document.getElementById(thinkingId)?.remove();
+            if (!res.ok) { alert("群友回复失败：" + (data.error?.message || res.status)); return; }
+            const parsed = parseGroupAiReplies(data.choices?.[0]?.message?.content || "", speakers);
+            if (!parsed.length) { alert("群聊回复解析失败"); return; }
+            await showGroupRepliesSlowly(currentGroup.id, parsed);
+            currentGroup.updatedAt = Date.now(); updateGroup(currentGroup);
+        }catch(e){ document.getElementById(thinkingId)?.remove(); alert("群友回复失败：" + e.message); }
+    };
+
+    window.showGroupRepliesSlowly = async function(groupId, replies){
+        const box = document.getElementById("chatBox");
+        const contacts = await getAllStoreData("contacts");
+        for (let i=0;i<replies.length;i++){
+            const item = replies[i];
+            const sender = contacts.find(c => c.id === item.senderId);
+            const now = Date.now() + i;
+            const isVoice = typeof shouldGroupVoice === "function" ? shouldGroupVoice(sender) : false;
+            const voiceDuration = Math.max(2, Math.min(18, Math.ceil(String(item.content || "").length / 6)));
+            const msgId = "msg_" + now + "_" + Math.random().toString(16).slice(2);
+            if (currentGroup && currentGroup.id === groupId && currentPage === "groupChat" && box) {
+                const typingId = "group_typing_" + now + "_" + i;
+                box.insertAdjacentHTML("beforeend", `<div id="${typingId}" class="chat-row ai-row"><div class="chat-avatar">${avatarHtml(sender?.avatar,"🙂")}</div><div class="msg-wrap ai-wrap"><div class="group-sender-name">${esc(getGroupMemberDisplayName(currentGroup,sender))}</div><div class="msg ai-msg typing-msg">${isVoice ? "正在录音中..." : "正在输入中..."}</div></div></div>`);
+                box.scrollTop = box.scrollHeight;
+                await sleep(650 + Math.random()*750);
+                document.getElementById(typingId)?.remove();
+                const msgObj = { id:msgId, content:item.content, translatedText:item.translatedText || "", isVoice, voiceMsg:isVoice, voiceDuration };
+                box.insertAdjacentHTML("beforeend", `<div class="chat-row ai-row" data-msg-id="${attr(msgId)}"><div class="chat-avatar">${avatarHtml(sender?.avatar,"🙂")}</div><div class="msg-wrap ai-wrap"><div class="group-sender-name">${esc(getGroupMemberDisplayName(currentGroup,sender))}</div><div class="msg ai-msg">${renderGroupMessageContent(msgObj)}</div><div class="msg-time">${formatMsgTime(now)}</div></div></div>`);
+                box.scrollTop = box.scrollHeight;
+            }
+            saveGroupAiMessage(groupId, item.senderId, item.content, now, { id:msgId, translatedText:item.translatedText || "", isVoice, voiceMsg:isVoice, voiceDuration });
+            if (typeof maybeGroupImage === "function") maybeGroupImage(groupId, sender, item.content);
+            if (i < replies.length-1) await sleep(450 + Math.random()*600);
+        }
+    };
+})();
