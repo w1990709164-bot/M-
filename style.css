@@ -2710,3 +2710,91 @@ body{
   background: #ef4444 !important;
   color: #fff !important;
 }
+
+/* ============================================================
+   屏幕适配修复 (RESPONSIVE / SCREEN-FIT FIX) 2026-06-18
+   目标：在任何浏览器 / 手机 / 平板上都能完整显示，不再被裁掉一半。
+   策略：
+     1. 手机外壳尺寸自动收缩，永不超过视口（解决横/竖向被裁）。
+     2. 用动态视口高度 dvh，规避移动端地址栏导致的底部遮挡。
+     3. 应用内页改用 flex 自适应，替换脆弱的 calc(100% - 60px)。
+     4. 适配刘海 / 灵动岛 / 底部横条（safe-area）。
+     5. 手机（窄屏）下铺满全屏、去掉外框圆角与阴影。
+   说明：本段位于文件末尾，按层叠顺序覆盖前面的固定尺寸，原样式保留。
+   ============================================================ */
+
+/* 1) 文档与 body：动态视口高度，禁止整页滚动（滚动交给内部容器） */
+html { height: 100%; }
+body {
+  height: 100vh;          /* 旧浏览器回退 */
+  height: 100dvh;         /* 现代浏览器：随地址栏伸缩 */
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* 2) 手机外壳：保留 390x844 设计稿，但绝不超过视口 */
+.phone {
+  max-width: 100vw;
+  max-width: 100dvw;
+  max-height: 100vh;
+  max-height: 100dvh;
+}
+
+/* 3) 桌面主区域：内边距叠加安全区（非刘海设备 env() 为 0，无副作用），
+      并允许在极矮屏（如手机横屏）时纵向滚动，保证 Dock 等永远可达 */
+.desktop-main {
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+  padding-left: calc(18px + env(safe-area-inset-left, 0px));
+  padding-right: calc(18px + env(safe-area-inset-right, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 4) 应用内页：flex 自适应，彻底替换 calc(100% - 60px)，
+      顶部栏自动避开刘海，内容区自动填满剩余高度并可滚动 */
+.screen:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+}
+.app-header {
+  flex: 0 0 auto;
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(60px + env(safe-area-inset-top, 0px));
+}
+.app-content {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 5) 窄屏手机：铺满全屏、去掉外框，左上对齐 */
+@media (max-width: 440px) {
+  body {
+    display: block;
+    padding: 0;
+  }
+  .phone {
+    width: 100vw;
+    width: 100dvw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .screen { border-radius: 0; }
+  .desktop-main,
+  .desktop-bg { border-radius: 0; }
+}
+
+/* 6) 现代浏览器优先用 small viewport 单位，进一步避免地址栏遮挡底部 */
+@supports (height: 100svh) {
+  @media (max-width: 440px) {
+    .phone { height: 100svh; }
+  }
+}
